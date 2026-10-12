@@ -1,0 +1,144 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Asset Explorer</title>
+</head>
+<body>
+    <h1>Asset Explorer</h1>
+
+    <p id="breadcrumb"></p>
+    <ul id="files"></ul>
+
+    <script>
+        const OWNER = "AMYE123";
+        const REPO = "assets.amy-portfolio.com";
+        const BRANCH = "main";
+
+        let currentPath = "";
+        let allFiles = [];
+
+        async function init() {
+            const url =
+                `https://api.github.com/repos/${OWNER}/${REPO}/git/trees/${BRANCH}?recursive=1`;
+
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                document.getElementById("files").textContent =
+                    "Could not load repository files.";
+                return;
+            }
+
+            const data = await response.json();
+            allFiles = data.tree.filter(file =>
+                file.type === "blob"
+            );
+
+            render();
+        }
+
+        function render() {
+            const list = document.getElementById("files");
+            const breadcrumb = document.getElementById("breadcrumb");
+
+            list.replaceChildren();
+
+            breadcrumb.replaceChildren();
+
+            const root = document.createElement("a");
+            root.href = "#";
+            root.textContent = "Root";
+            root.onclick = event => {
+                event.preventDefault();
+                currentPath = "";
+                render();
+            };
+
+            breadcrumb.append(root);
+
+            if (currentPath) {
+                breadcrumb.append(" / " + currentPath);
+            }
+
+            const prefix = currentPath
+                ? currentPath + "/"
+                : "";
+
+            const folders = new Set();
+            const files = [];
+
+            for (const file of allFiles) {
+                if (!file.path.startsWith(prefix)) continue;
+
+                const remaining = file.path.slice(prefix.length);
+
+                if (remaining.includes("/")) {
+                    folders.add(remaining.split("/")[0]);
+                } else {
+                    files.push(file);
+                }
+            }
+
+            if (currentPath) {
+                const li = document.createElement("li");
+                const back = document.createElement("a");
+
+                back.href = "#";
+                back.textContent = ".. (Parent folder)";
+                back.onclick = event => {
+                    event.preventDefault();
+                    currentPath = currentPath.includes("/")
+                        ? currentPath.substring(
+                            0, currentPath.lastIndexOf("/")
+                        )
+                        : "";
+                    render();
+                };
+
+                li.append(back);
+                list.append(li);
+            }
+
+            for (const folder of [...folders].sort()) {
+                const li = document.createElement("li");
+                const link = document.createElement("a");
+
+                link.href = "#";
+                link.textContent = "📁 " + folder;
+                link.onclick = event => {
+                    event.preventDefault();
+                    currentPath = prefix + folder;
+                    render();
+                };
+
+                li.append(link);
+                list.append(li);
+            }
+
+            for (const file of files.sort((a, b) =>
+                a.path.localeCompare(b.path)
+            )) {
+                const li = document.createElement("li");
+                const link = document.createElement("a");
+
+                link.href = "./" + file.path
+                    .split("/")
+                    .map(encodeURIComponent)
+                    .join("/");
+                link.textContent = file.path.split("/").pop();
+
+                li.append(link);
+                list.append(li);
+            }
+
+            if (folders.size === 0 && files.length === 0) {
+                list.textContent = "This folder is empty.";
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub Pull Request Diff</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+<style>
+  :root { color-scheme: dark; --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --green:#2ea043; --red:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:transparent; color:var(--text); font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+  .pr-embed { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg); }
+  .topbar { padding:14px 16px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; background:var(--panel); border-bottom:1px solid var(--border); }
+  .title { font-weight:650; }
+  .meta { color:var(--muted); font-size:12px; margin-top:2px; }
+  a { color:#58a6ff; text-decoration:none; } a:hover { text-decoration:underline; }
+  .status { padding:12px 16px; color:var(--muted); }
+  .file { border-bottom:1px solid var(--border); }
+  .file:last-child { border-bottom:0; }
+  .file summary { cursor:pointer; list-style:none; padding:10px 14px; background:var(--panel); display:flex; align-items:center; gap:9px; }
+  .file summary::-webkit-details-marker { display:none; }
+  .file summary:before { content:"▸"; color:var(--muted); }
+  .file[open] summary:before { content:"▾"; }
+  .filename { font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+  .file-stats { margin-left:auto; white-space:nowrap; font-size:12px; }
+  .plus { color:#3fb950; } .minus { color:#ff7b72; }
+  .diff { overflow:auto; max-height:560px; background:var(--bg); }
+  table { border-collapse:collapse; width:100%; font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; }
+  td { padding:0; vertical-align:top; }
+  .ln { color:var(--muted); text-align:right; user-select:none; padding:0 8px; min-width:42px; border-right:1px solid var(--border); }
+  .mark { width:20px; text-align:center; color:var(--muted); user-select:none; }
+  .code { padding:0 12px 0 4px; white-space:pre; width:100%; }
+  tr.add { background:rgba(46,160,67,.20); } tr.add .mark { color:#3fb950; }
+  tr.del { background:rgba(248,81,73,.18); } tr.del .mark { color:#ff7b72; }
+  tr.hunk td { background:rgba(56,139,253,.13); color:#79c0ff; }
+  tr.filehead td { background:var(--panel); color:var(--muted); padding:5px 10px; }
+  pre { margin:0; }
+  .footer { padding:10px 14px; color:var(--muted); font-size:12px; border-top:1px solid var(--border); }
+  .error { color:#ff7b72; }
+</style>
+</head>
+<body>
+<div class="pr-embed">
+  <div class="topbar">
+    <div>
+      <div class="title" id="pr-title">GitHub Pull Request</div>
+      <div class="meta" id="pr-meta">Loading changes…</div>
+    </div>
+    <a id="pr-link" href="#" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a>
+  </div>
+  <div id="status" class="status">Loading pull request changes…</div>
+  <div id="files"></div>
+  <div class="footer">Diff loaded from GitHub. Added lines are green; removed lines are red.</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script>
+(async function () {
+  const status = document.getElementById('status');
+  const filesEl = document.getElementById('files');
+  const params = new URLSearchParams(location.search);
+  const owner = params.get('owner') || 'AmyE123';
+  const repo = params.get('repo') || 'SOLID-Principles-Study';
+  const number = params.get('pr') || '3';
+  const api = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${encodeURIComponent(number)}`;
+  const htmlUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pull/${encodeURIComponent(number)}`;
+  document.getElementById('pr-link').href = htmlUrl;
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function getLanguage(path) {
+    const ext = (path.split('.').pop() || '').toLowerCase();
+    const map = {cs:'csharp', h:'cpp', hpp:'cpp', cpp:'cpp', cc:'cpp', c:'c', js:'javascript', jsx:'javascript', ts:'typescript', tsx:'typescript', json:'json', yml:'yaml', yaml:'yaml', html:'xml', xml:'xml', css:'css', shader:'glsl', compute:'glsl', py:'python', md:'markdown', asmdef:'json'};
+    return map[ext] || 'plaintext';
+  }
+  function parsePatch(patch, path) {
+    const lines = patch.split('\n');
+    let oldLine = 0, newLine = 0;
+    const lang = getLanguage(path);
+    const rows = [];
+    for (const line of lines) {
+      const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (hunk) {
+        oldLine = Number(hunk[1]); newLine = Number(hunk[2]);
+        rows.push(`<tr class="hunk"><td class="ln"></td><td class="ln"></td><td class="mark"></td><td class="code">${escapeHtml(line)}</td></tr>`);
+        continue;
+      }
+      if (line.startsWith('diff --git ') || line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ') || line.startsWith('new file mode ') || line.startsWith('deleted file mode ') || line.startsWith('similarity index ') || line.startsWith('rename from ') || line.startsWith('rename to ')) continue;
+      if (line.startsWith('\\ No newline')) continue;
+      let type = 'context', mark = ' ';
+      if (line.startsWith('+')) { type='add'; mark='+'; }
+      else if (line.startsWith('-')) { type='del'; mark='−'; }
+      else if (line.startsWith(' ')) { type='context'; }
+      else { continue; }
+      const content = line.slice(1);
+      const oldNum = type === 'add' ? '' : oldLine++;
+      const newNum = type === 'del' ? '' : newLine++;
+      let codeHtml;
+      try {
+        codeHtml = hljs.highlight(content, {language:lang, ignoreIllegals:true}).value;
+      } catch (_) { codeHtml = escapeHtml(content); }
+      rows.push(`<tr class="${type}"><td class="ln">${oldNum}</td><td class="ln">${newNum}</td><td class="mark">${mark}</td><td class="code"><code>${codeHtml || '&nbsp;'}</code></td></tr>`);
+    }
+    return `<div class="diff"><table><tbody>${rows.join('')}</tbody></table></div>`;
+  }
+  try {
+    const headers = { 'Accept':'application/vnd.github+json' };
+    const [prResponse, filesResponse] = await Promise.all([
+      fetch(api, {headers}),
+      fetch(`${api}/files?per_page=100`, {headers})
+    ]);
+    if (!prResponse.ok) throw new Error(`GitHub API returned ${prResponse.status} for pull request details.`);
+    if (!filesResponse.ok) throw new Error(`GitHub API returned ${filesResponse.status} for changed files.`);
+    const pr = await prResponse.json();
+    const files = await filesResponse.json();
+    document.getElementById('pr-title').textContent = `#${pr.number} ${pr.title}`;
+    document.getElementById('pr-meta').textContent = `${pr.state}${pr.merged ? ' · merged' : ''} · ${pr.changed_files} files changed · +${pr.additions} −${pr.deletions}`;
+    status.remove();
+    if (!files.length) {
+      filesEl.innerHTML = '<div class="status">No changed files found.</div>';
+      return;
+    }
+    filesEl.innerHTML = files.map((file, index) => {
+      const patch = file.patch;
+      const additions = `<span class="plus">+${file.additions}</span>`;
+      const deletions = `<span class="minus">−${file.deletions}</span>`;
+      const body = patch
+        ? parsePatch(patch, file.filename)
+        : `<div class="status">GitHub did not provide a patch for this file (it may be binary or too large). <a href="${htmlUrl}/files" target="_blank" rel="noopener noreferrer">View full diff on GitHub</a>.</div>`;
+      return `<details class="file" ${index === 0 ? 'open' : ''}><summary><span class="filename">${escapeHtml(file.filename)}</span><span class="file-stats">${additions} &nbsp; ${deletions}</span></summary>${body}</details>`;
+    }).join('');
+  } catch (err) {
+    status.classList.add('error');
+    status.textContent = `${err.message} You can still view the changes directly on GitHub.`;
+    status.insertAdjacentHTML('beforeend', ` <a href="${htmlUrl}" target="_blank" rel="noopener noreferrer">Open pull request ↗</a>`);
+  }
+})();
+</script>
+</body>
+</html>
